@@ -96,7 +96,7 @@ import { CommandPalette, NotificationBell, RoleSwitcher } from "@/components/lea
 const nav = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
   {
-    section: "Lead management",
+    section: "",
     items: [
       { label: "All leads", icon: Users, to: "/leads" },
       { label: "Create lead", icon: Plus, to: "/leads/new" },
@@ -150,7 +150,7 @@ const nav = [
 
 const pageTitles: Record<string, [string, string]> = {
   dashboard: ["Executive dashboard", "National network performance and pending work"],
-  leads: ["Lead management", "Track every application from enquiry to activation"],
+  leads: ["", "Track every application from enquiry to activation"],
   "leads/new": ["Create lead", "Capture a new Distributor, Retailer or CSP application"],
   followups: ["Follow-up calendar", "Calls, meetings and field visits across your team"],
   verification: ["Document verification", "Review submitted evidence against the frozen checklist"],

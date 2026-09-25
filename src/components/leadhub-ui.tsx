@@ -369,7 +369,12 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
 }
 
 function NavLink({ label, icon: Icon, to, pathname, collapsed, close }: any) {
-  const active = pathname === to || (to !== "/dashboard" && pathname.startsWith(to + "/"));
+  const matches = nav
+    .flatMap((group: any) => (group.items ? group.items : []))
+    .filter((item: any) => item.to && (pathname === item.to || pathname.startsWith(`${item.to}/`)))
+    .sort((a: any, b: any) => b.to.length - a.to.length);
+  const active = matches.length > 0 && matches[0].to === to;
+
   return (
     <Link
       to={to}

@@ -1041,6 +1041,7 @@ export function CreateLead() {
   const [toast, setToast] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const { user, profile } = useAuth();
   const [draft, setDraft] = useState<CreateLeadDraft>({
     applicant_name: "",
@@ -1070,6 +1071,65 @@ export function CreateLead() {
   function updateDraft(field: keyof CreateLeadDraft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
+  //form validation and submission logic
+  const validateStep = (currentStep: number) => {
+    const newErrors: Record<string, string> = {};
+
+    // STEP 1
+    if (currentStep === 1) {
+      if (!draft.applicant_name.trim()) newErrors["applicant_name"] = "Full name is required";
+
+      if (!draft.father_name.trim()) newErrors["father_name"] = "Father name is required";
+
+      if (!draft.dob) newErrors["dob"] = "Date of birth is required";
+
+      if (!draft.gender) newErrors["gender"] = "Select gender";
+
+      if (!draft.mobile.trim()) {
+        newErrors["mobile"] = "Mobile number is required";
+      } else if (!/^[6-9]\d{9}$/.test(draft.mobile)) {
+        newErrors["mobile"] = "Enter valid 10 digit mobile";
+      }
+
+      if (draft.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email)) {
+        newErrors["email"] = "Invalid email address";
+      }
+
+      if (draft.dob) {
+        const age = new Date().getFullYear() - new Date(draft.dob).getFullYear();
+
+        if (age < 18) {
+          newErrors["dob"] = "Applicant must be 18+";
+        }
+      }
+    }
+
+    // STEP 2
+    if (currentStep === 2) {
+      if (!draft.res_address.trim()) newErrors["res_address"] = "Address required";
+
+      if (!draft.res_state) newErrors["res_state"] = "Select state";
+
+      if (!draft.res_district) newErrors["res_district"] = "Select district";
+
+      if (!draft.res_block.trim()) newErrors["res_block"] = "Block required";
+
+      if (!/^\d{6}$/.test(draft.res_pin)) newErrors["res_pin"] = "PIN must be 6 digits";
+    }
+
+    // STEP 3
+    if (currentStep === 3) {
+      if (!draft.outlet_name.trim()) newErrors["outlet_name"] = "Outlet name required";
+
+      if (!draft.outlet_address.trim()) newErrors["outlet_address"] = "Outlet address required";
+
+      if (!draft.outlet_lat || !draft.outlet_lng) newErrors["gps"] = "Capture GPS location";
+    }
+
+    setErrors(newErrors);
+
+    return Object.keys(newErrors).length === 0;
+  };
 
   async function submitLead() {
     if (!draft.applicant_name.trim() || !draft.mobile.trim()) {
@@ -1166,6 +1226,7 @@ export function CreateLead() {
             step={step}
             profile={profile}
             user={user}
+            errors={errors}
           />
           {error && (
             <div className="mt-5 rounded-md border border-error/30 bg-error-soft px-3 py-2 text-xs text-error">
@@ -1179,7 +1240,15 @@ export function CreateLead() {
             </Button>
             <Button
               disabled={busy}
-              onClick={() => (step < 5 ? setStep(step + 1) : void submitLead())}
+              onClick={() => {
+                if (step < 5) {
+                  if (validateStep(step)) {
+                    setStep(step + 1);
+                  }
+                } else {
+                  submitLead();
+                }
+              }}
             >
               {busy ? "Saving..." : step === 5 ? "Submit lead" : "Continue"}
               <ArrowRight />
@@ -1237,6 +1306,15 @@ export function CreateLead() {
   );
 }
 
+// function Field({
+//   label,
+//   placeholder,
+//   required = true,
+//   type = "text",
+//   value,
+//   onChange,
+//   disabled = false,
+// }: any)
 function Field({
   label,
   placeholder,
@@ -1245,20 +1323,51 @@ function Field({
   value,
   onChange,
   disabled = false,
+  error,
+  maxLength,
 }: any) {
   return (
+    // <label className="block">
+    //   <span className="mb-2 block text-xs font-semibold">
+    //     {label}
+    //     {required && <span className="ml-1 text-error">*</span>}
+    //   </span>
+    //   <Input
+    //     type={type}
+    //     placeholder={placeholder}
+    //     value={value}
+    //     disabled={disabled}
+    //     onChange={(event) => onChange?.(event.target.value)}
+    //   />
+    // </label>
+
     <label className="block">
       <span className="mb-2 block text-xs font-semibold">
         {label}
-        {required && <span className="ml-1 text-error">*</span>}
+        {required && <span className="ml-1 text-red-500">*</span>}
       </span>
       <Input
-        type={type}
+        type={type === "tel" ? "text" : type}
         placeholder={placeholder}
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange?.(event.target.value)}
+        maxLength={maxLength}
+        inputMode={type === "tel" ? "numeric" : undefined}
+        pattern={type === "tel" ? "[0-9]*" : undefined}
+        onChange={(e) => {
+          let val = e.target.value;
+
+          if (type === "tel") {
+            // Only digits + limit length
+            val = val.replace(/[^0-9]/g, "").slice(0, maxLength || 10);
+          }
+
+          onChange?.(val);
+        }}
+        className={error ? "border-red-500 focus-visible:ring-red-500" : ""}
       />
+
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </label>
   );
 }
@@ -1296,12 +1405,14 @@ function StepContent({
   updateDraft,
   profile,
   user,
+  errors,
 }: {
   step: number;
   draft: CreateLeadDraft;
   updateDraft: (field: keyof CreateLeadDraft, value: string) => void;
-  profile: { full_name: string | null } | null;
-  user: { email?: string | null } | null;
+  profile: any;
+  user: any;
+  errors: Record<string, string>;
 }) {
   const { data: states = [] } = useQuery({
     queryKey: ["states"],
@@ -1376,19 +1487,22 @@ function StepContent({
             label="Full name"
             placeholder="Enter applicant name"
             value={draft.applicant_name}
-            onChange={(value: string) => updateDraft("applicant_name", value)}
+            onChange={(v: string) => updateDraft("applicant_name", v)}
+            error={errors["applicant_name"]}
           />
           <Field
             label="Father's name"
             placeholder="Enter father's name"
             value={draft.father_name}
-            onChange={(value: string) => updateDraft("father_name", value)}
+            onChange={(v: string) => updateDraft("father_name", v)}
+            error={errors["father_name"]}
           />
           <Field
             label="Date of birth"
             type="date"
             value={draft.dob}
-            onChange={(value: string) => updateDraft("dob", value)}
+            onChange={(v: string) => updateDraft("dob", v)}
+            error={errors["dob"]}
           />
           <SelectField
             label="Gender"
@@ -1404,16 +1518,20 @@ function StepContent({
           />
           <Field
             label="Primary mobile"
-            placeholder="10-digit mobile number"
+            type="tel"
+            placeholder="9876543210"
             value={draft.mobile}
-            onChange={(value: string) => updateDraft("mobile", value)}
+            maxLength={10}
+            onChange={(v: string) => updateDraft("mobile", v)}
+            error={errors["mobile"]}
           />
           <Field
             label="Email address"
             placeholder="name@company.com"
             value={draft.email}
-            onChange={(value: string) => updateDraft("email", value)}
+            onChange={(v: string) => updateDraft("email", v)}
             required={false}
+            error={errors["email"]}
           />
           <SelectField
             label="Application type"
@@ -1572,10 +1690,13 @@ function StepContent({
             onChange={(value: string) => updateDraft("post_office", value)}
           />
           <Field
-            label="PIN code"
-            placeholder="6-digit PIN"
+            label="PIN Code"
+            type="tel"
+            placeholder="110001"
             value={draft.res_pin}
-            onChange={(value: string) => updateDraft("res_pin", value)}
+            maxLength={6}
+            onChange={(v: string) => updateDraft("res_pin", v)}
+            error={errors["res_pin"]}
           />
         </div>
       </div>

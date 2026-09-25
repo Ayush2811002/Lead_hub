@@ -1087,6 +1087,47 @@ export type Database = {
         };
         Relationships: [];
       };
+      states: {
+        Row: {
+          id: number;
+          name: string;
+        };
+        Insert: {
+          id?: number;
+          name: string;
+        };
+        Update: {
+          id?: number;
+          name?: string;
+        };
+        Relationships: [];
+      };
+      districts: {
+        Row: {
+          id: number;
+          name: string;
+          state_id: number;
+        };
+        Insert: {
+          id?: number;
+          name: string;
+          state_id: number;
+        };
+        Update: {
+          id?: number;
+          name?: string;
+          state_id?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "districts_state_id_fkey";
+            columns: ["state_id"];
+            isOneToOne: false;
+            referencedRelation: "states";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       territories: {
         Row: {
           block: string;

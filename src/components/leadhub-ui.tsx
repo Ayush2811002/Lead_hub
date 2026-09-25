@@ -94,7 +94,13 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { AuthScreen } from "@/components/leadhub-auth";
 import { CommandPalette, NotificationBell, RoleSwitcher } from "@/components/leadhub-features";
-
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 const nav = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
   {
@@ -1297,6 +1303,67 @@ function StepContent({
   profile: { full_name: string | null } | null;
   user: { email?: string | null } | null;
 }) {
+  const { data: states = [] } = useQuery({
+    queryKey: ["states"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("states").select("id, name").order("name");
+
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const { data: districts = [] } = useQuery({
+    queryKey: ["districts", draft.res_state],
+    enabled: !!draft.res_state,
+    queryFn: async () => {
+      const { data: state } = await supabase
+        .from("states")
+        .select("id")
+        .eq("name", draft.res_state)
+        .single();
+
+      if (!state) return [];
+
+      const { data, error } = await supabase
+        .from("districts")
+        .select("id, name")
+        .eq("state_id", state.id)
+        .order("name");
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const captureCurrentGPS = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported");
+      return;
+    }
+
+    setGpsLoading(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        updateDraft("outlet_lat", position.coords.latitude.toFixed(6));
+        updateDraft("outlet_lng", position.coords.longitude.toFixed(6));
+
+        setGpsAccuracy(Math.round(position.coords.accuracy));
+        setGpsLoading(false);
+      },
+      () => {
+        setGpsLoading(false);
+        alert("Please allow location permission");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
+  };
   if (step === 1)
     return (
       <div>
@@ -1392,18 +1459,100 @@ function StepContent({
               onChange={(value: string) => updateDraft("res_address", value)}
             />
           </div>
-          <Field
-            label="State"
-            placeholder="Enter state"
-            value={draft.res_state}
-            onChange={(value: string) => updateDraft("res_state", value)}
-          />
-          <Field
-            label="District"
-            placeholder="Enter district"
-            value={draft.res_district}
-            onChange={(value: string) => updateDraft("res_district", value)}
-          />
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold">
+              State <span className="text-red-500">*</span>
+            </span>
+
+            {/* <select
+              value={draft.res_state}
+              onChange={(e) => {
+                updateDraft("res_state", e.target.value);
+                updateDraft("res_district", ""); // reset district
+              }}
+              className="h-10 w-full rounded-lg border px-3"
+            >
+              <option value="">Select State</option>
+
+              {states.map((state) => (
+                <option key={state.id} value={state.name}>
+                  {state.name}
+                </option>
+              ))}
+            </select> */}
+
+            <Select
+              value={draft.res_state}
+              onValueChange={(value) => {
+                updateDraft("res_state", value);
+                updateDraft("res_district", "");
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select State" />
+              </SelectTrigger>
+
+              <SelectContent side="bottom" position="popper" align="start" className="max-h-72">
+                {states.map((state) => (
+                  <SelectItem key={state.id} value={state.name}>
+                    {state.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          {/* <label className="block">
+            <span className="mb-2 block text-xs font-semibold">
+              District <span className="text-red-500">*</span>
+            </span>
+
+            <select
+              value={draft.res_district}
+              disabled={!draft.res_state}
+              onChange={(e) => updateDraft("res_district", e.target.value)}
+              className="h-10 w-full rounded-lg border px-3"
+            >
+              <option value="">{draft.res_state ? "Select District" : "Select State First"}</option>
+
+              {districts.map((district) => (
+                <option key={district.id} value={district.name}>
+                  {district.name}
+                </option>
+              ))}
+            </select>
+          </label> */}
+          {/* District */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              District <span className="text-red-500">*</span>
+            </label>
+
+            <Select
+              value={draft.res_district}
+              onValueChange={(value) => updateDraft("res_district", value)}
+              disabled={!draft.res_state}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select District" />
+              </SelectTrigger>
+
+              <SelectContent
+                side="bottom"
+                position="popper"
+                align="start"
+                className="max-h-72 z-50"
+                sideOffset={4}
+                avoidCollisions={false}
+              >
+                {districts.map((district) => (
+                  <SelectItem key={district.id} value={district.name}>
+                    {district.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Field
             label="Block / Urban unit"
             placeholder="Enter block"
@@ -1468,9 +1617,15 @@ function StepContent({
                 required={false}
               />
             </div>
-            <Button>
-              <MapPin />
-              Capture current GPS
+            <Button
+              type="button"
+              variant="default"
+              className="w-full"
+              onClick={captureCurrentGPS}
+              disabled={gpsLoading}
+            >
+              <MapPin className="h-4 w-4 mr-2" />
+              {gpsLoading ? "Capturing..." : "Capture current GPS"}
             </Button>
             <p className="text-xs text-muted-foreground">
               Accuracy will be recorded with capture method, operator and timestamp.
@@ -1571,6 +1726,7 @@ function StepContent({
     </div>
   );
 }
+
 function SectionTitle({ title, detail }: any) {
   return (
     <div className="mb-6">

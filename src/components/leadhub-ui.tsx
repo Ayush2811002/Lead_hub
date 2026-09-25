@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Swal from "sweetalert2";
 import {
   Activity,
   AlertTriangle,
@@ -1032,8 +1033,13 @@ type CreateLeadDraft = {
   res_pin: string;
   outlet_name: string;
   outlet_address: string;
+  outlet_state: string;
+  outlet_district: string;
+  outlet_block: string;
+  outlet_pin: string;
   outlet_lat: string;
   outlet_lng: string;
+  landmark: string;
 };
 
 export function CreateLead() {
@@ -1063,8 +1069,13 @@ export function CreateLead() {
     res_pin: "",
     outlet_name: "",
     outlet_address: "",
+    outlet_state: "",
+    outlet_district: "",
+    outlet_block: "",
+    outlet_pin: "",
     outlet_lat: "",
     outlet_lng: "",
+    landmark: "",
   });
   const steps = ["Applicant", "Residential", "Outlet", "Documents", "Review"];
 
@@ -1131,7 +1142,7 @@ export function CreateLead() {
     return Object.keys(newErrors).length === 0;
   };
 
-  async function submitLead() {
+  async function submitLead(status: "Draft" | "Submitted") {
     if (!draft.applicant_name.trim() || !draft.mobile.trim()) {
       setError("Applicant name and primary mobile are required.");
       return;
@@ -1158,10 +1169,15 @@ export function CreateLead() {
       res_pin: draft.res_pin.trim() || null,
       outlet_name: draft.outlet_name.trim() || null,
       outlet_address: draft.outlet_address.trim() || null,
+      outlet_state: draft.outlet_state,
+      outlet_district: draft.outlet_district,
+      outlet_block: draft.outlet_block,
+      outlet_pin: draft.outlet_pin,
+      landmark: draft.landmark,
       outlet_lat: draft.outlet_lat ? Number(draft.outlet_lat) : null,
       outlet_lng: draft.outlet_lng ? Number(draft.outlet_lng) : null,
       created_by: user?.id ?? null,
-      status: "Draft",
+      status,
     });
     setBusy(false);
     if (insertError) {
@@ -1171,6 +1187,32 @@ export function CreateLead() {
     setToast(true);
   }
 
+  const confirmLeadSubmission = async () => {
+    const result = await Swal.fire({
+      title: "Submit this lead?",
+      text: "You can either save it as a draft or submit it for verification.",
+      icon: "question",
+
+      showCancelButton: true,
+      showDenyButton: true,
+
+      confirmButtonText: "Final Submit",
+      denyButtonText: "Save Draft",
+      cancelButtonText: "Cancel",
+
+      confirmButtonColor: "#2563EB",
+      denyButtonColor: "#64748B",
+      reverseButtons: true,
+    });
+
+    if (result.isConfirmed) {
+      submitLead("Submitted");
+    }
+
+    if (result.isDenied) {
+      submitLead("Draft");
+    }
+  };
   return (
     <Page
       pageKey="leads/new"
@@ -1227,6 +1269,7 @@ export function CreateLead() {
             profile={profile}
             user={user}
             errors={errors}
+            submitLead={submitLead} // NEW
           />
           {error && (
             <div className="mt-5 rounded-md border border-error/30 bg-error-soft px-3 py-2 text-xs text-error">
@@ -1240,13 +1283,23 @@ export function CreateLead() {
             </Button>
             <Button
               disabled={busy}
+              // onClick={() => {
+              //   if (step < 5) {
+              //     if (validateStep(step)) {
+              //       setStep(step + 1);
+              //     }
+              //   } else {
+              //     submitLead();
+              //   }
+              // }}
+
               onClick={() => {
                 if (step < 5) {
                   if (validateStep(step)) {
                     setStep(step + 1);
                   }
                 } else {
-                  submitLead();
+                  confirmLeadSubmission(); // SweetAlert popup
                 }
               }}
             >
@@ -1406,6 +1459,7 @@ function StepContent({
   profile,
   user,
   errors,
+  submitLead, // NEW
 }: {
   step: number;
   draft: CreateLeadDraft;
@@ -1413,6 +1467,7 @@ function StepContent({
   profile: any;
   user: any;
   errors: Record<string, string>;
+  submitLead: (status: "Draft" | "Submitted") => void; // NEW
 }) {
   const { data: states = [] } = useQuery({
     queryKey: ["states"],
@@ -1448,6 +1503,39 @@ function StepContent({
     },
   });
 
+  // const captureCurrentGPS = () => {
+  //   if (!navigator.geolocation) {
+  //     alert("Geolocation is not supported");
+  //     return;
+  //   }
+
+  //   setGpsLoading(true);
+
+  //   navigator.geolocation.getCurrentPosition(
+  //     (position) => {
+  //       updateDraft("outlet_lat", position.coords.latitude.toFixed(6));
+  //       updateDraft("outlet_lng", position.coords.longitude.toFixed(6));
+  //       // Dummy Bihar address (temporary)
+  //       updateDraft("outlet_state", "Bihar");
+  //       updateDraft("outlet_district", "Aurangabad");
+  //       updateDraft("outlet_block", "Nabinagar");
+  //       updateDraft("outlet_pin", "824301");
+  //       updateDraft("landmark", "Near Nabinagar Bus Stand");
+  //       setGpsAccuracy(Math.round(position.coords.accuracy));
+  //       setGpsLoading(false);
+  //     },
+  //     () => {
+  //       setGpsLoading(false);
+  //       alert("Please allow location permission");
+  //     },
+  //     {
+  //       enableHighAccuracy: true,
+  //       timeout: 10000,
+  //       maximumAge: 0,
+  //     },
+  //   );
+  // };
+
   const captureCurrentGPS = () => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported");
@@ -1458,13 +1546,25 @@ function StepContent({
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        updateDraft("outlet_lat", position.coords.latitude.toFixed(6));
-        updateDraft("outlet_lng", position.coords.longitude.toFixed(6));
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        // Real GPS
+        updateDraft("outlet_lat", lat.toFixed(6));
+        updateDraft("outlet_lng", lng.toFixed(6));
+
+        // Dummy address
+        updateDraft("outlet_state", "Bihar");
+        updateDraft("outlet_district", "Arwal");
+        updateDraft("outlet_block", "Karpi");
+        updateDraft("outlet_pin", "804419");
+        updateDraft("landmark", "Near Hanuman Mandir");
 
         setGpsAccuracy(Math.round(position.coords.accuracy));
         setGpsLoading(false);
       },
-      () => {
+      (error) => {
+        console.error(error);
         setGpsLoading(false);
         alert("Please allow location permission");
       },
@@ -1475,6 +1575,7 @@ function StepContent({
       },
     );
   };
+
   if (step === 1)
     return (
       <div>

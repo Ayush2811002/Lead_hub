@@ -1,4 +1,5 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
@@ -80,6 +81,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 import {
   activities,
   documents,
@@ -781,7 +783,46 @@ function QueueCard({ title, count, detail, icon: Icon, tone }: any) {
 
 export function LeadsList() {
   const [query, setQuery] = useState("");
-  const filtered = leads.filter((l) =>
+  const {
+    data: databaseLeads = [],
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["leads-list"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select(
+          "id, lead_code, applicant_name, lead_type, program_id, mobile, outlet_district, outlet_state, res_district, res_state, owner_id, status, next_follow_up, priority",
+        )
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const databaseRows = databaseLeads.map((lead) => ({
+    id: lead.lead_code,
+    leadId: lead.id,
+    name: lead.applicant_name,
+    initials: lead.applicant_name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase(),
+    type: lead.lead_type,
+    program: lead.program_id ?? "Unassigned",
+    mobile: lead.mobile ?? "Not provided",
+    district: lead.outlet_district ?? lead.res_district ?? "Not provided",
+    state: lead.outlet_state ?? lead.res_state ?? "Not provided",
+    owner: lead.owner_id ?? "Unassigned",
+    status: lead.status,
+    followUp: lead.next_follow_up
+      ? new Date(lead.next_follow_up).toLocaleString()
+      : "Not scheduled",
+    priority: lead.priority,
+  }));
+  const filtered = databaseRows.filter((l) =>
     `${l.name} ${l.id} ${l.district}`.toLowerCase().includes(query.toLowerCase()),
   );
   return (
@@ -797,6 +838,21 @@ export function LeadsList() {
       }
     >
       <FilterBar query={query} setQuery={setQuery} />
+      {isLoading && (
+        <Card className="mt-4 p-6 text-sm text-muted-foreground">
+          Loading leads from Supabase...
+        </Card>
+      )}
+      {error && (
+        <Card className="mt-4 border-error/30 bg-error-soft p-6 text-sm text-error">
+          Unable to load leads: {error.message}
+        </Card>
+      )}
+      {!isLoading && !error && databaseRows.length === 0 && (
+        <Card className="mt-4 p-6 text-sm text-muted-foreground">
+          No leads found in the database.
+        </Card>
+      )}
       <Card className="mt-4 overflow-hidden shadow-panel">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm">
@@ -824,7 +880,7 @@ export function LeadsList() {
                   <td className="px-5 py-4">
                     <Link
                       to="/leads/$leadId"
-                      params={{ leadId: l.id }}
+                      params={{ leadId: l.leadId }}
                       className="font-semibold text-primary hover:underline"
                     >
                       {l.id}
@@ -866,7 +922,7 @@ export function LeadsList() {
           {filtered.map((l) => (
             <Link
               to="/leads/$leadId"
-              params={{ leadId: l.id }}
+              params={{ leadId: l.leadId }}
               key={l.id}
               className="block p-4 hover:bg-secondary"
             >
@@ -950,10 +1006,105 @@ function Pagination() {
   );
 }
 
+type CreateLeadDraft = {
+  applicant_name: string;
+  father_name: string;
+  dob: string;
+  gender: string;
+  entity_type: string;
+  mobile: string;
+  email: string;
+  lead_type: string;
+  source: string;
+  priority: string;
+  res_address: string;
+  res_state: string;
+  res_district: string;
+  res_block: string;
+  res_village: string;
+  post_office: string;
+  res_pin: string;
+  outlet_name: string;
+  outlet_address: string;
+  outlet_lat: string;
+  outlet_lng: string;
+};
+
 export function CreateLead() {
   const [step, setStep] = useState(1);
   const [toast, setToast] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { user, profile } = useAuth();
+  const [draft, setDraft] = useState<CreateLeadDraft>({
+    applicant_name: "",
+    father_name: "",
+    dob: "",
+    gender: "",
+    entity_type: "Individual",
+    mobile: "",
+    email: "",
+    lead_type: "Distributor",
+    source: "",
+    priority: "",
+    res_address: "",
+    res_state: "",
+    res_district: "",
+    res_block: "",
+    res_village: "",
+    post_office: "",
+    res_pin: "",
+    outlet_name: "",
+    outlet_address: "",
+    outlet_lat: "",
+    outlet_lng: "",
+  });
   const steps = ["Applicant", "Residential", "Outlet", "Documents", "Review"];
+
+  function updateDraft(field: keyof CreateLeadDraft, value: string) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitLead() {
+    if (!draft.applicant_name.trim() || !draft.mobile.trim()) {
+      setError("Applicant name and primary mobile are required.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error: insertError } = await supabase.from("leads").insert({
+      applicant_name: draft.applicant_name.trim(),
+      father_name: draft.father_name.trim() || null,
+      dob: draft.dob || null,
+      gender: draft.gender || null,
+      entity_type: draft.entity_type,
+      mobile: draft.mobile.trim(),
+      email: draft.email.trim() || null,
+      lead_type: draft.lead_type,
+      source: draft.source || null,
+      priority: draft.priority || "Medium",
+      res_address: draft.res_address.trim() || null,
+      res_state: draft.res_state.trim() || null,
+      res_district: draft.res_district.trim() || null,
+      res_block: draft.res_block.trim() || null,
+      res_village: draft.res_village.trim() || null,
+      post_office: draft.post_office.trim() || null,
+      res_pin: draft.res_pin.trim() || null,
+      outlet_name: draft.outlet_name.trim() || null,
+      outlet_address: draft.outlet_address.trim() || null,
+      outlet_lat: draft.outlet_lat ? Number(draft.outlet_lat) : null,
+      outlet_lng: draft.outlet_lng ? Number(draft.outlet_lng) : null,
+      created_by: user?.id ?? null,
+      status: "Draft",
+    });
+    setBusy(false);
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+    setToast(true);
+  }
+
   return (
     <Page
       pageKey="leads/new"
@@ -1003,14 +1154,28 @@ export function CreateLead() {
       </Card>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <Card className="p-6 shadow-panel">
-          <StepContent step={step} />
+          <StepContent
+            draft={draft}
+            updateDraft={updateDraft}
+            step={step}
+            profile={profile}
+            user={user}
+          />
+          {error && (
+            <div className="mt-5 rounded-md border border-error/30 bg-error-soft px-3 py-2 text-xs text-error">
+              {error}
+            </div>
+          )}
           <div className="mt-8 flex justify-between border-t pt-5">
             <Button variant="outline" disabled={step === 1} onClick={() => setStep(step - 1)}>
               <ArrowLeft />
               Back
             </Button>
-            <Button onClick={() => (step < 5 ? setStep(step + 1) : setToast(true))}>
-              {step === 5 ? "Submit for verification" : "Continue"}
+            <Button
+              disabled={busy}
+              onClick={() => (step < 5 ? setStep(step + 1) : void submitLead())}
+            >
+              {busy ? "Saving..." : step === 5 ? "Submit lead" : "Continue"}
               <ArrowRight />
             </Button>
           </div>
@@ -1058,11 +1223,7 @@ export function CreateLead() {
       {toast && (
         <Toast
           title={step === 5 ? "Lead submitted" : "Draft saved"}
-          detail={
-            step === 5
-              ? "LD-2026-01843 is ready for verification."
-              : "Your progress has been saved securely."
-          }
+          detail="The lead was saved to Supabase and is ready for the next workflow step."
           close={() => setToast(false)}
         />
       )}
@@ -1070,32 +1231,72 @@ export function CreateLead() {
   );
 }
 
-function Field({ label, placeholder, required = true, type = "text" }: any) {
+function Field({
+  label,
+  placeholder,
+  required = true,
+  type = "text",
+  value,
+  onChange,
+  disabled = false,
+}: any) {
   return (
     <label className="block">
       <span className="mb-2 block text-xs font-semibold">
         {label}
         {required && <span className="ml-1 text-error">*</span>}
       </span>
-      <Input type={type} placeholder={placeholder} />
+      <Input
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
     </label>
   );
 }
-function SelectField({ label, value }: any) {
+function SelectField({ label, value, options = [value], onChange, required = true }: any) {
   return (
     <label className="block">
       <span className="mb-2 block text-xs font-semibold">
         {label}
-        <span className="ml-1 text-error">*</span>
+        {required && <span className="ml-1 text-error">*</span>}
       </span>
-      <button className="flex h-9 w-full items-center justify-between rounded-md border bg-surface px-3 text-sm">
-        <span>{value}</span>
-        <ChevronDown size={15} />
-      </button>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+          className="h-10 w-full appearance-none rounded-lg border border-border bg-surface px-3 pr-10 text-sm text-foreground shadow-sm outline-none transition-colors hover:border-primary/50 focus:border-primary focus:ring-2 focus:ring-primary/20"
+        >
+          {options.map((option: string) => (
+            <option key={option} value={option}>
+              {option || `Select ${label.toLowerCase()}`}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={16}
+          aria-hidden="true"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
+      </div>
     </label>
   );
 }
-function StepContent({ step }: any) {
+function StepContent({
+  step,
+  draft,
+  updateDraft,
+  profile,
+  user,
+}: {
+  step: number;
+  draft: CreateLeadDraft;
+  updateDraft: (field: keyof CreateLeadDraft, value: string) => void;
+  profile: { full_name: string | null } | null;
+  user: { email?: string | null } | null;
+}) {
   if (step === 1)
     return (
       <div>
@@ -1104,14 +1305,74 @@ function StepContent({ step }: any) {
           detail="Minimum identity and contact details for lead creation"
         />
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Full name" placeholder="Enter applicant name" />
-          <Field label="Father's name" placeholder="Enter father's name" />
-          <Field label="Date of birth" type="date" />
-          <SelectField label="Gender" value="Select gender" />
-          <SelectField label="Entity type" value="Individual" />
-          <Field label="Primary mobile" placeholder="10-digit mobile number" />
-          <Field label="Email address" placeholder="name@company.com" />
-          <SelectField label="Application type" value="Distributor" />
+          <Field
+            label="Full name"
+            placeholder="Enter applicant name"
+            value={draft.applicant_name}
+            onChange={(value: string) => updateDraft("applicant_name", value)}
+          />
+          <Field
+            label="Father's name"
+            placeholder="Enter father's name"
+            value={draft.father_name}
+            onChange={(value: string) => updateDraft("father_name", value)}
+          />
+          <Field
+            label="Date of birth"
+            type="date"
+            value={draft.dob}
+            onChange={(value: string) => updateDraft("dob", value)}
+          />
+          <SelectField
+            label="Gender"
+            value={draft.gender}
+            onChange={(value: string) => updateDraft("gender", value)}
+            options={["", "Male", "Female", "Other", "Prefer not to say"]}
+          />
+          <SelectField
+            label="Applicant type"
+            value={draft.entity_type}
+            onChange={(value: string) => updateDraft("entity_type", value)}
+            options={["Individual", "Proprietorship", "Company", "Other"]}
+          />
+          <Field
+            label="Primary mobile"
+            placeholder="10-digit mobile number"
+            value={draft.mobile}
+            onChange={(value: string) => updateDraft("mobile", value)}
+          />
+          <Field
+            label="Email address"
+            placeholder="name@company.com"
+            value={draft.email}
+            onChange={(value: string) => updateDraft("email", value)}
+            required={false}
+          />
+          <SelectField
+            label="Application type"
+            value={draft.lead_type}
+            onChange={(value: string) => updateDraft("lead_type", value)}
+            options={["Distributor", "Retailer", "CSP"]}
+          />
+          <Field
+            label="Lead owner"
+            value={profile?.full_name || user?.email || "Current user"}
+            disabled
+          />
+          <SelectField
+            label="Source"
+            value={draft.source}
+            onChange={(value: string) => updateDraft("source", value)}
+            options={["", "Website", "Referral", "Field visit", "Partner", "Other"]}
+            required={false}
+          />
+          <SelectField
+            label="Priority"
+            value={draft.priority}
+            onChange={(value: string) => updateDraft("priority", value)}
+            options={["", "Low", "Medium", "High"]}
+            required={false}
+          />
         </div>
       </div>
     );
@@ -1124,14 +1385,49 @@ function StepContent({ step }: any) {
         />
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Field label="Address lines" placeholder="House number, street and landmark" />
+            <Field
+              label="Address lines"
+              placeholder="House number, street and landmark"
+              value={draft.res_address}
+              onChange={(value: string) => updateDraft("res_address", value)}
+            />
           </div>
-          <SelectField label="State" value="Uttar Pradesh" />
-          <SelectField label="District" value="Lucknow" />
-          <SelectField label="Block / Urban unit" value="Mohanlalganj" />
-          <Field label="Village / Town" placeholder="Enter village or town" />
-          <Field label="Post office" placeholder="Enter post office" />
-          <Field label="PIN code" placeholder="6-digit PIN" />
+          <Field
+            label="State"
+            placeholder="Enter state"
+            value={draft.res_state}
+            onChange={(value: string) => updateDraft("res_state", value)}
+          />
+          <Field
+            label="District"
+            placeholder="Enter district"
+            value={draft.res_district}
+            onChange={(value: string) => updateDraft("res_district", value)}
+          />
+          <Field
+            label="Block / Urban unit"
+            placeholder="Enter block"
+            value={draft.res_block}
+            onChange={(value: string) => updateDraft("res_block", value)}
+          />
+          <Field
+            label="Village / Town"
+            placeholder="Enter village or town"
+            value={draft.res_village}
+            onChange={(value: string) => updateDraft("res_village", value)}
+          />
+          <Field
+            label="Post office"
+            placeholder="Enter post office"
+            value={draft.post_office}
+            onChange={(value: string) => updateDraft("post_office", value)}
+          />
+          <Field
+            label="PIN code"
+            placeholder="6-digit PIN"
+            value={draft.res_pin}
+            onChange={(value: string) => updateDraft("res_pin", value)}
+          />
         </div>
       </div>
     );
@@ -1144,11 +1440,33 @@ function StepContent({ step }: any) {
         />
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-5">
-            <Field label="Shop name" placeholder="Enter business or outlet name" />
-            <Field label="Outlet address" placeholder="Street, landmark and locality" />
+            <Field
+              label="Shop name"
+              placeholder="Enter business or outlet name"
+              value={draft.outlet_name}
+              onChange={(value: string) => updateDraft("outlet_name", value)}
+            />
+            <Field
+              label="Outlet address"
+              placeholder="Street, landmark and locality"
+              value={draft.outlet_address}
+              onChange={(value: string) => updateDraft("outlet_address", value)}
+            />
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Latitude" placeholder="26.846694" />
-              <Field label="Longitude" placeholder="80.946166" />
+              <Field
+                label="Latitude"
+                placeholder="26.846694"
+                value={draft.outlet_lat}
+                onChange={(value: string) => updateDraft("outlet_lat", value)}
+                required={false}
+              />
+              <Field
+                label="Longitude"
+                placeholder="80.946166"
+                value={draft.outlet_lng}
+                onChange={(value: string) => updateDraft("outlet_lng", value)}
+                required={false}
+              />
             </div>
             <Button>
               <MapPin />
@@ -1212,9 +1530,21 @@ function StepContent({ step }: any) {
       />
       <div className="grid gap-4 sm:grid-cols-2">
         {[
-          ["Applicant", "Aarav Sharma", "Distributor · Individual"],
-          ["Residential", "Mohanlalganj, Lucknow", "Uttar Pradesh · 226301"],
-          ["Outlet", "Sharma Digital Services", "GPS captured · 9m accuracy"],
+          [
+            "Applicant",
+            draft.applicant_name || "Not provided",
+            `${draft.lead_type} · ${draft.entity_type}`,
+          ],
+          [
+            "Residential",
+            draft.res_district || draft.res_state || "Not provided",
+            `${draft.res_state || "State not provided"} · ${draft.res_pin || "PIN not provided"}`,
+          ],
+          [
+            "Outlet",
+            draft.outlet_name || "Not provided",
+            draft.outlet_address || "Address not provided",
+          ],
           ["Documents", "5 of 5 required uploaded", "All files passed security scan"],
         ].map((x) => (
           <div key={x[0]} className="rounded-xl border p-4">
@@ -1279,8 +1609,40 @@ const detailTabs = [
 ];
 export function LeadDetail() {
   const [tab, setTab] = useState("Overview");
-  const lead = leads[0];
-  if (!lead) return null;
+  const { leadId } = useParams({ from: "/leads/$leadId" });
+  const {
+    data: lead,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["lead-detail", leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("leads").select("*").eq("id", leadId).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+  if (isLoading)
+    return (
+      <Page pageKey="leads">
+        <Card className="h-96 animate-pulse" />
+      </Page>
+    );
+  if (error || !lead) {
+    return (
+      <Page pageKey="leads">
+        <Card className="border-error/30 bg-error-soft p-6 text-sm text-error">
+          {error?.message ?? "Lead not found."}
+        </Card>
+      </Page>
+    );
+  }
+  const initials = lead.applicant_name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
   return (
     <Page
       pageKey="leads"
@@ -1299,21 +1661,21 @@ export function LeadDetail() {
       <Card className="p-5 shadow-panel">
         <div className="grid gap-5 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
           <div className="grid size-16 place-items-center rounded-2xl bg-primary-soft text-lg font-bold text-primary">
-            {lead.initials}
+            {initials}
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold">{lead.name}</h1>
+              <h1 className="text-2xl font-bold">{lead.applicant_name}</h1>
               <StatusBadge status={lead.status} />
               <span className="rounded-md bg-error-soft px-2 py-1 text-xs font-semibold text-error">
-                High priority
+                {lead.priority} priority
               </span>
             </div>
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-              <span>{lead.id}</span>
-              <span>{lead.type}</span>
-              <span>{lead.program}</span>
-              <span>Owner: {lead.owner}</span>
+              <span>{lead.lead_code}</span>
+              <span>{lead.lead_type}</span>
+              <span>{lead.program_id ?? "Program unassigned"}</span>
+              <span>Owner: {lead.owner_id ?? "Unassigned"}</span>
             </div>
           </div>
           <Button variant="outline">
@@ -1337,7 +1699,7 @@ export function LeadDetail() {
         </div>
       </Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <DetailTab tab={tab} />
+        <DetailTab tab={tab} lead={lead} />
         <div className="space-y-4">
           <Panel title="Quick actions">
             <div className="space-y-2">
@@ -1386,7 +1748,7 @@ function Health({ label, ok }: any) {
     </div>
   );
 }
-function DetailTab({ tab }: any) {
+function DetailTab({ tab, lead }: { tab: string; lead: any }) {
   if (tab === "Documents") return <DocumentGrid />;
   if (tab === "Activity")
     return (
@@ -1417,14 +1779,14 @@ function DetailTab({ tab }: any) {
       <Panel title={tab === "Overview" ? "Application overview" : tab}>
         <InfoGrid
           items={[
-            ["Full name", "Aarav Sharma"],
-            ["Father's name", "Rajesh Sharma"],
-            ["Date of birth", "14 February 1992"],
-            ["Entity type", "Individual"],
-            ["Primary mobile", "+91 ••••• 4821"],
-            ["Email", "aarav.s@example.in"],
-            ["State", "Uttar Pradesh"],
-            ["District", "Lucknow"],
+            ["Full name", lead.applicant_name],
+            ["Father's name", lead.father_name ?? "Not provided"],
+            ["Date of birth", lead.dob ?? "Not provided"],
+            ["Entity type", lead.entity_type ?? "Not provided"],
+            ["Primary mobile", lead.mobile ?? "Not provided"],
+            ["Email", lead.email ?? "Not provided"],
+            ["State", lead.res_state ?? lead.outlet_state ?? "Not provided"],
+            ["District", lead.res_district ?? lead.outlet_district ?? "Not provided"],
           ]}
         />
       </Panel>

@@ -2,6 +2,8 @@ import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-ro
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Swal from "sweetalert2";
+import { Badge } from "@/components/ui/badge";
+import { CheckItem } from "@/components/ui/check-item";
 import {
   Activity,
   AlertTriangle,
@@ -1957,7 +1959,17 @@ function SectionTitle({ title, detail }: any) {
     </div>
   );
 }
-function MapMock() {
+function MapMock({
+  lat,
+  lng,
+  district,
+  state,
+}: {
+  lat?: number;
+  lng?: number;
+  district?: string;
+  state?: string;
+}) {
   return (
     <div className="relative min-h-[320px] overflow-hidden rounded-xl border bg-map">
       <div className="absolute inset-0 map-grid" />
@@ -1996,6 +2008,72 @@ export function LeadDetail() {
     queryKey: ["lead-detail", leadId],
     queryFn: async () => {
       const { data, error } = await supabase.from("leads").select("*").eq("id", leadId).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const { data: letterTemplates = [] } = useQuery({
+    queryKey: ["letter-templates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("letter_templates")
+        .select("*")
+        .eq("is_active", true)
+        .order("name");
+
+      if (error) throw error;
+      return data;
+    },
+  });
+  const { data: territory } = useQuery({
+    queryKey: ["territory", leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("territories")
+        .select("*")
+        .eq("lead_id" as any, leadId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: dueDiligence } = useQuery({
+    queryKey: ["due-diligence", leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("due_diligence")
+        .select("*")
+        .eq("lead_id", leadId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+  });
+  const { data: approval } = useQuery({
+    queryKey: ["approval", leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("approvals")
+        .select("*")
+        .eq("lead_id", leadId)
+        .single();
+
+      if (error && error.code !== "PGRST116") throw error;
+      return data;
+    },
+  });
+  const { data: followUps = [] } = useQuery({
+    queryKey: ["follow-ups", leadId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("follow_ups")
+        .select("*")
+        .eq("lead_id", leadId)
+        .order("scheduled_at", { ascending: false });
+
       if (error) throw error;
       return data;
     },
@@ -2077,7 +2155,15 @@ export function LeadDetail() {
         </div>
       </Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <DetailTab tab={tab} lead={lead} />
+        <DetailTab
+          tab={tab}
+          lead={lead}
+          dueDiligence={dueDiligence}
+          followUps={followUps}
+          approval={approval}
+          territory={territory}
+          letterTemplates={letterTemplates}
+        />
         <div className="space-y-4">
           <Panel title="Quick actions">
             <div className="space-y-2">
@@ -2126,7 +2212,23 @@ function Health({ label, ok }: any) {
     </div>
   );
 }
-function DetailTab({ tab, lead }: { tab: string; lead: any }) {
+function DetailTab({
+  tab,
+  lead,
+  dueDiligence,
+  followUps,
+  approval,
+  territory,
+  letterTemplates,
+}: {
+  tab: string;
+  lead: any;
+  dueDiligence: any;
+  followUps: any[];
+  approval: any;
+  territory: any;
+  letterTemplates: any[];
+}) {
   if (tab === "Documents") return <DocumentGrid />;
   if (tab === "Activity")
     return (
@@ -2134,21 +2236,291 @@ function DetailTab({ tab, lead }: { tab: string; lead: any }) {
         <Timeline />
       </Panel>
     );
+
+  if (tab === "Letters")
+    return (
+      <Panel title="Letter Templates">
+        <div className="space-y-3">
+          {letterTemplates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No active letter templates found.</p>
+          ) : (
+            letterTemplates.map((letter) => (
+              <div
+                key={letter.id}
+                className="flex items-center justify-between rounded-lg border p-3"
+              >
+                <div className="flex items-center gap-3">
+                  <FileText className="h-8 w-8 text-blue-600" />
+
+                  <div>
+                    <p className="font-medium">{letter.name}</p>
+                    <p className="text-xs text-muted-foreground">Lead: {lead.lead_code}</p>
+                  </div>
+                </div>
+
+                <Badge className="bg-green-100 text-green-700">Active</Badge>
+              </div>
+            ))
+          )}
+        </div>
+      </Panel>
+    );
+
+  if (tab === "Territory")
+    return (
+      <Panel title="Assigned Territory">
+        <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+          <Field label="State" value={territory?.state ?? "-"} />
+          <Field label="District" value={territory?.district ?? "-"} />
+          <Field label="Block" value={territory?.block ?? "-"} />
+          <Field label="Status" value={territory?.status ?? "Available"} />
+          <Field label="Capacity" value={territory?.capacity?.toString() ?? "0"} />
+          <Field label="Occupied" value={territory?.occupied?.toString() ?? "0"} />
+          <Field label="Reserved" value={territory?.reserved?.toString() ?? "0"} />
+          <Field label="Reserved By" value={territory?.reserved_by ?? "-"} />
+          <Field label="Reserved At" value={territory?.reserved_at ?? "-"} />
+        </div>
+      </Panel>
+    );
+  if (tab === "Approval")
+    return (
+      <Panel title="Final Approval">
+        <div className="space-y-6">
+          <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+            <Field label="Decision" value={approval?.decision ?? "Pending"} />
+
+            <Field label="Approved By" value={approval?.decided_by ?? "Not assigned"} />
+
+            <Field label="Signed Date" value={approval?.signed_at ?? "-"} />
+
+            <Field label="Signature" value={approval?.signature ?? "Pending"} />
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Remarks</h3>
+            <p className="rounded-lg border p-3 text-sm">
+              {approval?.remarks ?? "No remarks available."}
+            </p>
+          </div>
+
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Conditions</h3>
+            <p className="rounded-lg border p-3 text-sm">
+              {approval?.conditions ?? "No conditions."}
+            </p>
+          </div>
+        </div>
+      </Panel>
+    );
+  if (tab === "Follow-ups") {
+    const upcoming = followUps.find((f: any) => f.status === "Scheduled");
+    const history = followUps.filter((f: any) => f.status !== "Scheduled");
+
+    return (
+      <div className="space-y-6">
+        <Panel title="Upcoming Follow-up">
+          {upcoming ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              <Field label="Date & Time" value={new Date(upcoming.scheduled_at).toLocaleString()} />
+              <Field label="Assigned To" value={upcoming.assigned_to ?? "Unassigned"} />
+              <Field label="Type" value={upcoming.task_type} />
+              <Field label="Status" value={upcoming.status} />
+              <div className="md:col-span-2">
+                <Field label="Purpose" value={upcoming.notes ?? "-"} />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No upcoming follow-up scheduled.</p>
+          )}
+        </Panel>
+
+        <Panel title="Follow-up History">
+          {history.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No completed follow-ups yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {history.map((item: any) => (
+                <div key={item.id} className="flex gap-3">
+                  <CheckCircle2 className="mt-1 h-5 w-5 text-green-600" />
+                  <div>
+                    <p className="font-medium">{item.task_type}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(item.scheduled_at).toLocaleString()}
+                    </p>
+                    {item.outcome && <p className="mt-1 text-sm">{item.outcome}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    );
+  }
+  if (tab === "Due diligence")
+    return (
+      <Panel title="Due Diligence Report">
+        <div className="space-y-6">
+          {/* Inspection Details */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Inspection Details</h3>
+
+            <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+              <Field label="Inspection Status" value={dueDiligence?.status ?? "Pending"} />
+              <Field label="Inspector" value={dueDiligence?.inspector ?? "Unassigned"} />
+              <Field label="Visit Date" value={dueDiligence?.visit_date ?? "Not scheduled"} />
+              <Field label="Risk Level" value={dueDiligence?.risk ?? "Medium"} />
+            </div>
+          </div>
+
+          {/* Verification Checklist */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+              Verification Checklist
+            </h3>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <CheckItem label="Identity Verified" checked={dueDiligence?.identity_verified} />
+              <CheckItem label="Address Verified" checked={dueDiligence?.address_verified} />
+              <CheckItem label="Shop Verified" checked={dueDiligence?.shop_verified} />
+              <CheckItem label="Signboard Verified" checked={dueDiligence?.signboard_verified} />
+            </div>
+          </div>
+
+          {/* Infrastructure */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Infrastructure</h3>
+
+            <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+              <Field label="Electricity" value={dueDiligence?.electricity ?? "N/A"} />
+              <Field label="Internet" value={dueDiligence?.internet ?? "N/A"} />
+              <Field label="Computer" value={dueDiligence?.computer ?? "N/A"} />
+              <Field label="Printer" value={dueDiligence?.printer ?? "N/A"} />
+              <Field label="Biometric" value={dueDiligence?.biometric ?? "N/A"} />
+              <Field label="Security" value={dueDiligence?.security ?? "N/A"} />
+            </div>
+          </div>
+
+          {/* Recommendation */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+              Inspector Recommendation
+            </h3>
+
+            <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+              <Field label="Recommendation" value={dueDiligence?.recommendation ?? "Pending"} />
+              <Field label="Notes" value={dueDiligence?.notes ?? "-"} />
+            </div>
+          </div>
+        </div>
+      </Panel>
+    );
+  //red
+  if (tab === "Residential")
+    return (
+      <Panel title="Residential">
+        <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+          <Field label="Address" value={lead.res_address} />
+          <Field label="State" value={lead.res_state} />
+
+          <Field label="District" value={lead.res_district} />
+          <Field label="Block" value={lead.res_block} />
+
+          <Field label="Village" value={lead.res_village} />
+          <Field label="Post Office" value={lead.post_office} />
+
+          <Field label="PIN Code" value={lead.res_pin} />
+        </div>
+      </Panel>
+    );
+
+  if (tab === "Due diligence")
+    return (
+      <Panel title="Due Diligence Report">
+        <div className="space-y-6">
+          {/* Inspection Details */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Inspection Details</h3>
+
+            <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+              <Field label="Inspection Status" value={dueDiligence?.status ?? "Pending"} />
+              <Field label="Inspector" value={dueDiligence?.inspector ?? "Unassigned"} />
+              <Field label="Visit Date" value={dueDiligence?.visit_date ?? "Not scheduled"} />
+              <Field label="Risk Level" value={dueDiligence?.risk ?? "Medium"} />
+            </div>
+          </div>
+
+          {/* Verification Checklist */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+              Verification Checklist
+            </h3>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <CheckItem label="Identity Verified" checked={dueDiligence?.identity_verified} />
+              <CheckItem label="Address Verified" checked={dueDiligence?.address_verified} />
+              <CheckItem label="Shop Verified" checked={dueDiligence?.shop_verified} />
+              <CheckItem label="Signboard Verified" checked={dueDiligence?.signboard_verified} />
+            </div>
+          </div>
+
+          {/* Infrastructure */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Infrastructure</h3>
+
+            <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+              <Field label="Electricity" value={dueDiligence?.electricity ?? "N/A"} />
+              <Field label="Internet" value={dueDiligence?.internet ?? "N/A"} />
+              <Field label="Computer" value={dueDiligence?.computer ?? "N/A"} />
+              <Field label="Printer" value={dueDiligence?.printer ?? "N/A"} />
+              <Field label="Biometric" value={dueDiligence?.biometric ?? "N/A"} />
+              <Field label="Security" value={dueDiligence?.security ?? "N/A"} />
+            </div>
+          </div>
+
+          {/* Recommendation */}
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+              Inspector Recommendation
+            </h3>
+
+            <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
+              <Field label="Recommendation" value={dueDiligence?.recommendation ?? "Pending"} />
+              <Field label="Notes" value={dueDiligence?.notes ?? "-"} />
+            </div>
+          </div>
+        </div>
+      </Panel>
+    );
+
   if (tab === "Outlet")
     return (
       <Panel title="Outlet location">
         <div className="grid gap-6 lg:grid-cols-2">
           <InfoGrid
             items={[
-              ["Shop name", "Sharma Digital Services"],
-              ["Address", "Raebareli Road, Mohanlalganj"],
-              ["Capture method", "Device GPS"],
-              ["Accuracy", "9 metres"],
-              ["Captured", "18 Sep 2026, 4:22 PM"],
-              ["Operator", "Neha Singh"],
+              ["Shop name", lead.outlet_name ?? "Not provided"],
+              ["Address", lead.outlet_address ?? "Not provided"],
+              ["State", lead.outlet_state ?? "Not provided"],
+              ["District", lead.outlet_district ?? "Not provided"],
+              ["Block", lead.outlet_block ?? "Not provided"],
+              ["PIN Code", lead.outlet_pin ?? "Not provided"],
+              ["Landmark", lead.landmark ?? "Not provided"],
+              [
+                "GPS Coordinates",
+                lead.outlet_lat && lead.outlet_lng
+                  ? `${lead.outlet_lat}, ${lead.outlet_lng}`
+                  : "Not captured",
+              ],
             ]}
           />
-          <MapMock />
+
+          <MapMock
+            lat={lead.outlet_lat}
+            lng={lead.outlet_lng}
+            district={lead.outlet_district}
+            state={lead.outlet_state}
+          />
         </div>
       </Panel>
     );

@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Logo } from "@/components/leadhub-ui";
 import { ROLE_LABELS, type AppRole } from "@/hooks/useAuth";
-import { ArrowLeft, Loader2, ShieldCheck } from "lucide-react";
-
+import { ArrowLeft, Loader2, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Turnstile } from "@marsidev/react-turnstile";
 export function AuthScreen() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -19,12 +19,29 @@ export function AuthScreen() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("verified") === "1") {
+      setMessage("Email verified. You can sign in now.");
+    }
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setMessage(null);
+
+    // ADD THIS
+    if (!captchaToken) {
+      setError("Please verify you're human.");
+      setBusy(false);
+      return;
+    }
+
     try {
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -35,7 +52,7 @@ export function AuthScreen() {
           email,
           password,
           options: {
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: `${window.location.origin}/login?verified=1`,
             data: { full_name: name || email.split("@")[0], role },
           },
         });
@@ -110,7 +127,7 @@ export function AuthScreen() {
                 placeholder="name@company.com"
               />
             </label>
-            <label className="block">
+            {/* <label className="block">
               <span className="mb-2 block text-xs font-semibold">Password</span>
               <Input
                 type="password"
@@ -120,6 +137,39 @@ export function AuthScreen() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Minimum 6 characters"
               />
+              {mode === "signin" && (
+                <Link
+                  to="/forgot-password"
+                  className="mt-2 block text-right text-xs font-semibold text-primary hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              )}
+            </label> */}
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold">Password</span>
+
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  className="pr-10"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
               {mode === "signin" && (
                 <Link
                   to="/forgot-password"
@@ -155,7 +205,18 @@ export function AuthScreen() {
                 {message}
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={busy}>
+            <Turnstile
+              siteKey={import.meta.env["VITE_TURNSTILE_SITE_KEY"]}
+              onSuccess={(token) => setCaptchaToken(token)}
+              onExpire={() => setCaptchaToken("")}
+              onError={() => setCaptchaToken("")}
+              options={{
+                theme: "light",
+                size: "flexible",
+              }}
+            />
+
+            <Button type="submit" className="w-full" disabled={busy || !captchaToken}>
               {busy && <Loader2 className="animate-spin" />}
               {mode === "signin" ? "Sign in" : "Create account"}
             </Button>
@@ -239,6 +300,8 @@ export function ResetPasswordScreen() {
   const [confirm, setConfirm] = useState("");
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   useEffect(() => {
     const hash = new URLSearchParams(window.location.hash.slice(1));
     setReady(hash.get("type") === "recovery" || Boolean(hash.get("access_token")));

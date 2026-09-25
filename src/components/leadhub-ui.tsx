@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -206,7 +206,7 @@ function Sidebar({
   return (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-all duration-200",
+        "flex h-full shrink-0 flex-col overflow-x-visible overflow-y-auto border-r border-sidebar-border bg-sidebar transition-all duration-200",
         collapsed && !mobile ? "w-[76px]" : "w-[280px]",
       )}
     >
@@ -263,14 +263,40 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
   const { user, profile, activeRole, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const name =
-    profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+    profile?.full_name ||
+    user?.user_metadata?.["full_name"] ||
+    user?.email?.split("@")[0] ||
+    "User";
   const initials = name
     .split(" ")
-    .map((part) => part[0])
+    .map((part: string) => part[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
 
   async function logout() {
     setOpen(false);
@@ -278,19 +304,19 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div className="relative">
+    <div ref={menuRef} className="relative">
       <button
         type="button"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="Open profile menu"
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen((value) => !value)}
         className={cn(
-          "flex w-full items-center gap-3 rounded-xl p-2 text-left hover:bg-sidebar-accent",
-          compact && "justify-center",
+          "flex items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-sidebar-accent",
+          compact ? "h-10 w-10 justify-center rounded-full" : "w-full",
         )}
       >
-        <div className="grid size-9 shrink-0 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-soft text-[11px] font-bold leading-none text-primary">
           {initials}
         </div>
         {!compact && (
@@ -307,8 +333,8 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
         <div
           role="menu"
           className={cn(
-            "absolute bottom-full left-0 z-50 mb-2 w-64 rounded-lg border bg-surface p-2 shadow-modal",
-            compact && "left-full bottom-0 ml-2",
+            "absolute z-[60] w-64 rounded-lg border bg-surface p-2 shadow-modal",
+            compact ? "right-0 top-full mt-2" : "bottom-full left-0 mb-2",
           )}
         >
           <div className="border-b px-3 pb-2">
@@ -522,9 +548,11 @@ export function Dashboard() {
     <Page
       pageKey="dashboard"
       actions={
-        <Button>
-          <Plus />
-          New lead
+        <Button asChild>
+          <Link to="/leads/new">
+            <Plus />
+            New lead
+          </Link>
         </Button>
       }
     >
@@ -665,7 +693,14 @@ export function Dashboard() {
         <Panel
           title="Recent activity"
           subtitle="Across your assigned network"
-          action="View audit log"
+          action={
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/audit">
+                View audit log
+                <ArrowRight />
+              </Link>
+            </Button>
+          }
         >
           <Timeline compact />
         </Panel>
@@ -705,12 +740,7 @@ function Panel({ title, subtitle, action, children, className }: any) {
           <h2 className="text-base font-semibold">{title}</h2>
           {subtitle && <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>}
         </div>
-        {action && (
-          <Button variant="ghost" size="sm">
-            {action}
-            <ArrowRight />
-          </Button>
-        )}
+        {action && <div className="flex items-center">{action}</div>}
       </div>
       {children}
     </Card>

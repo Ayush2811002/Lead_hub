@@ -20,3 +20,5 @@ ADD COLUMN reserved_by text;
 
 ALTER TABLE public.territories
 ADD COLUMN reserved_at timestamptz;
+ALTER TABLE profiles
+ADD COLUMN role text DEFAULT 'lead_executive';

@@ -4,6 +4,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Swal from "sweetalert2";
 import { Badge } from "@/components/ui/badge";
 import { CheckItem } from "@/components/ui/check-item";
+import { useRole } from "@/context/RoleContext";
+
+// const { role } = useRole();
+// const isLeadExecutive = role === "lead_executive";
 import {
   Activity,
   AlertTriangle,
@@ -104,61 +108,238 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+// const nav = [
+//   { label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+//   {
+//     section: "",
+//     items: [
+//       { label: "All leads", icon: Users, to: "/leads" },
+//       { label: "Create lead", icon: Plus, to: "/leads/new" },
+//       { label: "Follow-ups", icon: CalendarDays, to: "/follow-ups" },
+//     ],
+//   },
+//   {
+//     section: "Verification",
+//     items: [
+//       { label: "Document review", icon: FileCheck2, to: "/verification" },
+//       { label: "Due diligence", icon: ClipboardCheck, to: "/due-diligence" },
+//       { label: "Approval queue", icon: FolderKanban, to: "/approvals" },
+//     ],
+//   },
+//   {
+//     section: "Territory",
+//     items: [
+//       { label: "Coverage map", icon: Map, to: "/territory/map" },
+//       { label: "Capacity", icon: Gauge, to: "/territory/capacity" },
+//       { label: "Heatmap & reservations", icon: Grid2X2, to: "/territory/heatmap" },
+//     ],
+//   },
+//   {
+//     section: "Network",
+//     items: [
+//       { label: "Partner directory", icon: Network, to: "/partners" },
+//       { label: "Partner network", icon: Network, to: "/partners/network" },
+//       { label: "Generate letter", icon: PenLine, to: "/letters/generate" },
+//       { label: "Letter register", icon: FileText, to: "/letters" },
+//     ],
+//   },
+//   {
+//     section: "Intelligence",
+//     items: [
+//       { label: "Reports & analytics", icon: BarChart3, to: "/reports" },
+//       { label: "Audit log", icon: Archive, to: "/audit" },
+//     ],
+//   },
+//   {
+//     section: "Administration",
+//     items: [
+//       { label: "Users", icon: UserCog, to: "/admin/users" },
+//       { label: "Roles & permissions", icon: ShieldCheck, to: "/admin/roles" },
+//       { label: "Geography masters", icon: MapPin, to: "/admin/geography" },
+//       { label: "Banks & programs", icon: Landmark, to: "/admin/programs" },
+//       { label: "Import data", icon: Upload, to: "/import" },
+//       { label: "Settings", icon: Settings, to: "/settings" },
+//     ],
+//   },
+// ];
 const nav = [
-  { label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+  {
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    to: "/dashboard",
+    roles: [
+      "super_admin",
+      "state_manager",
+      "lead_executive",
+      "verification_officer",
+      "approver",
+      "auditor",
+    ],
+  },
   {
     section: "",
     items: [
-      { label: "All leads", icon: Users, to: "/leads" },
-      { label: "Create lead", icon: Plus, to: "/leads/new" },
-      { label: "Follow-ups", icon: CalendarDays, to: "/follow-ups" },
+      {
+        label: "All leads",
+        icon: Users,
+        to: "/leads",
+        roles: [
+          "super_admin",
+          "state_manager",
+          "lead_executive",
+          "verification_officer",
+          "approver",
+          "auditor",
+        ],
+      },
+      {
+        label: "Create lead",
+        icon: Plus,
+        to: "/leads/new",
+        roles: ["super_admin", "lead_executive"],
+      },
+      {
+        label: "Follow-ups",
+        icon: CalendarDays,
+        to: "/follow-ups",
+        roles: ["super_admin", "lead_executive"],
+      },
     ],
   },
   {
     section: "Verification",
     items: [
-      { label: "Document review", icon: FileCheck2, to: "/verification" },
-      { label: "Due diligence", icon: ClipboardCheck, to: "/due-diligence" },
-      { label: "Approval queue", icon: FolderKanban, to: "/approvals" },
+      {
+        label: "Document review",
+        icon: FileCheck2,
+        to: "/verification",
+        roles: ["super_admin", "verification_officer"],
+      },
+      {
+        label: "Due diligence",
+        icon: ClipboardCheck,
+        to: "/due-diligence",
+        roles: ["super_admin", "verification_officer"],
+      },
+      {
+        label: "Approval queue",
+        icon: FolderKanban,
+        to: "/approvals",
+        roles: ["super_admin", "approver"],
+      },
     ],
   },
   {
     section: "Territory",
     items: [
-      { label: "Coverage map", icon: Map, to: "/territory/map" },
-      { label: "Capacity", icon: Gauge, to: "/territory/capacity" },
-      { label: "Heatmap & reservations", icon: Grid2X2, to: "/territory/heatmap" },
+      {
+        label: "Coverage map",
+        icon: Map,
+        to: "/territory/map",
+        roles: ["super_admin", "state_manager"],
+      },
+      {
+        label: "Capacity",
+        icon: Gauge,
+        to: "/territory/capacity",
+        roles: ["super_admin", "state_manager"],
+      },
+      {
+        label: "Heatmap & reservations",
+        icon: Grid2X2,
+        to: "/territory/heatmap",
+        roles: ["super_admin", "state_manager"],
+      },
     ],
   },
   {
     section: "Network",
     items: [
-      { label: "Partner directory", icon: Network, to: "/partners" },
-      { label: "Partner network", icon: Network, to: "/partners/network" },
-      { label: "Generate letter", icon: PenLine, to: "/letters/generate" },
-      { label: "Letter register", icon: FileText, to: "/letters" },
+      {
+        label: "Partner directory",
+        icon: Network,
+        to: "/partners",
+        roles: ["super_admin", "state_manager"],
+      },
+      {
+        label: "Partner network",
+        icon: Network,
+        to: "/partners/network",
+        roles: ["super_admin", "state_manager"],
+      },
+      {
+        label: "Generate letter",
+        icon: PenLine,
+        to: "/letters/generate",
+        roles: ["super_admin", "approver"],
+      },
+      {
+        label: "Letter register",
+        icon: FileText,
+        to: "/letters",
+        roles: ["super_admin", "approver", "auditor"],
+      },
     ],
   },
   {
     section: "Intelligence",
     items: [
-      { label: "Reports & analytics", icon: BarChart3, to: "/reports" },
-      { label: "Audit log", icon: Archive, to: "/audit" },
+      {
+        label: "Reports & analytics",
+        icon: BarChart3,
+        to: "/reports",
+        roles: ["super_admin", "state_manager", "auditor"],
+      },
+      {
+        label: "Audit log",
+        icon: Archive,
+        to: "/audit",
+        roles: ["super_admin", "auditor"],
+      },
     ],
   },
   {
     section: "Administration",
     items: [
-      { label: "Users", icon: UserCog, to: "/admin/users" },
-      { label: "Roles & permissions", icon: ShieldCheck, to: "/admin/roles" },
-      { label: "Geography masters", icon: MapPin, to: "/admin/geography" },
-      { label: "Banks & programs", icon: Landmark, to: "/admin/programs" },
-      { label: "Import data", icon: Upload, to: "/import" },
-      { label: "Settings", icon: Settings, to: "/settings" },
+      {
+        label: "Users",
+        icon: UserCog,
+        to: "/admin/users",
+        roles: ["super_admin"],
+      },
+      {
+        label: "Roles & permissions",
+        icon: ShieldCheck,
+        to: "/admin/roles",
+        roles: ["super_admin"],
+      },
+      {
+        label: "Geography masters",
+        icon: MapPin,
+        to: "/admin/geography",
+        roles: ["super_admin"],
+      },
+      {
+        label: "Banks & programs",
+        icon: Landmark,
+        to: "/admin/programs",
+        roles: ["super_admin"],
+      },
+      {
+        label: "Import data",
+        icon: Upload,
+        to: "/import",
+        roles: ["super_admin"],
+      },
+      {
+        label: "Settings",
+        icon: Settings,
+        to: "/settings",
+        roles: ["super_admin"],
+      },
     ],
   },
 ];
-
 const pageTitles: Record<string, [string, string]> = {
   dashboard: ["Executive dashboard", "National network performance and pending work"],
   leads: ["", "Track every application from enquiry to activation"],
@@ -214,6 +395,24 @@ function Sidebar({
   close?: () => void;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // const { role } = useRole();
+  const { activeRole } = useAuth();
+  const filteredNav = nav
+    .map((section) => {
+      if ("to" in section) {
+        // return section.roles.includes(role) ? section : null;
+        // return (section.roles?.includes(role) ?? false) ? section : null;
+        return section.roles?.includes(activeRole) ? section : null;
+      }
+
+      // const items = section.items.filter((item) => item.roles.includes(role));
+      const items = section.items.filter((item) => item.roles.includes(activeRole));
+
+      if (items.length === 0) return null;
+
+      return { ...section, items };
+    })
+    .filter((section): section is NonNullable<typeof section> => section !== null);
   return (
     <aside
       className={cn(
@@ -230,7 +429,8 @@ function Sidebar({
         )}
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        {nav.map((group, i) =>
+        {/* {nav.map((group, i) => */}
+        {filteredNav.map((group, i) =>
           group.to ? (
             <NavLink
               key={group.label}
@@ -405,12 +605,27 @@ function NavLink({ label, icon: Icon, to, pathname, collapsed, close }: any) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const { role } = useRole();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notice, setNotice] = useState(false);
   const [commands, setCommands] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { loading, user } = useAuth();
+
+  const filteredNav = nav
+    .map((section) => {
+      if (!("items" in section)) {
+        return section.roles.includes(role) ? section : null;
+      }
+
+      const items = section.items.filter((item) => item.roles.includes(role));
+
+      if (items.length === 0) return null;
+
+      return { ...section, items };
+    })
+    .filter(Boolean);
   const authPage =
     pathname === "/login" || pathname === "/forgot-password" || pathname === "/reset-password";
   if (authPage) return <>{children}</>;

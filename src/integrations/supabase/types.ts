@@ -951,6 +951,7 @@ export type Database = {
           last_login_at: string | null;
           mfa_enabled: boolean;
           phone: string | null;
+          role: string | null; // ADD THIS
         };
         Insert: {
           assigned_district?: string | null;
@@ -964,6 +965,7 @@ export type Database = {
           last_login_at?: string | null;
           mfa_enabled?: boolean;
           phone?: string | null;
+          role?: string | null; // ADD THIS
         };
         Update: {
           assigned_district?: string | null;
@@ -977,6 +979,7 @@ export type Database = {
           last_login_at?: string | null;
           mfa_enabled?: boolean;
           phone?: string | null;
+          role?: string | null; // ADD THIS
         };
         Relationships: [];
       };

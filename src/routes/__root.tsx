@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "../components/leadhub-ui";
 import { AuthProvider } from "../hooks/useAuth";
+import { RoleProvider } from "../context/RoleContext";
 
 function NotFoundComponent() {
   return (
@@ -93,7 +94,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+      },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
@@ -117,12 +121,32 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+// function RootComponent() {
+//   const { queryClient } = Route.useRouteContext();
+
+//   return (
+//     <QueryClientProvider client={queryClient}>
+//       <AuthProvider>
+//         <AppShell>
+//           <Outlet />
+//         </AppShell>
+//       </AuthProvider>
+//     </QueryClientProvider>
+//   );
+// }
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider><AppShell><Outlet /></AppShell></AuthProvider>
+      <AuthProvider>
+        <RoleProvider>
+          <AppShell>
+            <Outlet />
+          </AppShell>
+        </RoleProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

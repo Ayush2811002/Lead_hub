@@ -1,10 +1,24 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Session, User } from "@supabase/supabase-js";
 
 export type AppRole =
-  | "super_admin" | "state_manager" | "district_manager" | "lead_executive"
-  | "verification_officer" | "approver" | "letter_issuer" | "auditor";
+  | "super_admin"
+  | "state_manager"
+  | "district_manager"
+  | "lead_executive"
+  | "verification_officer"
+  | "approver"
+  | "letter_issuer"
+  | "auditor";
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: "Super Admin",
@@ -18,11 +32,37 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 };
 
 export type Permission =
-  | "lead.create" | "lead.edit" | "lead.delete" | "document.upload" | "document.download"
-  | "verify" | "diligence" | "approve" | "letter.issue" | "capacity.edit"
-  | "export" | "admin" | "reports" | "audit";
+  | "lead.create"
+  | "lead.edit"
+  | "lead.delete"
+  | "document.upload"
+  | "document.download"
+  | "verify"
+  | "diligence"
+  | "approve"
+  | "letter.issue"
+  | "capacity.edit"
+  | "export"
+  | "admin"
+  | "reports"
+  | "audit";
 
-const ALL: Permission[] = ["lead.create","lead.edit","lead.delete","document.upload","document.download","verify","diligence","approve","letter.issue","capacity.edit","export","admin","reports","audit"];
+const ALL: Permission[] = [
+  "lead.create",
+  "lead.edit",
+  "lead.delete",
+  "document.upload",
+  "document.download",
+  "verify",
+  "diligence",
+  "approve",
+  "letter.issue",
+  "capacity.edit",
+  "export",
+  "admin",
+  "reports",
+  "audit",
+];
 
 export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
   super_admin: ALL,
@@ -35,7 +75,14 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
   auditor: ["reports", "audit", "export"],
 };
 
-type Profile = { id: string; full_name: string; email: string | null; assigned_state: string | null; assigned_district: string | null };
+type Profile = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  assigned_state: string | null;
+  assigned_district: string | null;
+  // role: AppRole;
+};
 
 type AuthValue = {
   loading: boolean;
@@ -61,9 +108,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
-      if (!s) { setProfile(null); setRoles([]); }
+      if (!s) {
+        setProfile(null);
+        setRoles([]);
+      }
     });
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -72,18 +125,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!uid) return;
     let cancelled = false;
     (async () => {
-      const [{ data: p }, { data: r }] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, email, assigned_state, assigned_district").eq("id", uid).maybeSingle(),
+      // const [{ data: p }, { data: r }] = await Promise.all([
+      //   supabase.from("profiles").select("id, full_name, email, assigned_state, assigned_district").eq("id", uid).maybeSingle(),
+      //   supabase.from("user_roles").select("role").eq("user_id", uid),
+      // ]);
+      // if (cancelled) return;
+      // setProfile((p as Profile) ?? null);
+      // const list = ((r ?? []).map((x: { role: string }) => x.role) as AppRole[]);
+      // setRoles(list);
+      // const stored = typeof window !== "undefined" ? (localStorage.getItem("leadhub.activeRole") as AppRole | null) : null;
+      // setActiveRoleState(stored ?? list[0] ?? "lead_executive");
+
+      // const { data: p, error } = await supabase
+      //   .from("users")
+      //   .select("id, full_name, email, assigned_state, assigned_district, role")
+      //   .eq("id", uid)
+      //   .single();
+      const [{ data: profile }, { data: roleData }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, full_name, email, assigned_state, assigned_district")
+          .eq("id", uid)
+          .single(),
+
         supabase.from("user_roles").select("role").eq("user_id", uid),
       ]);
-      if (cancelled) return;
-      setProfile((p as Profile) ?? null);
-      const list = ((r ?? []).map((x: { role: string }) => x.role) as AppRole[]);
-      setRoles(list);
-      const stored = typeof window !== "undefined" ? (localStorage.getItem("leadhub.activeRole") as AppRole | null) : null;
-      setActiveRoleState(stored ?? list[0] ?? "lead_executive");
+
+      if (cancelled || !profile) return;
+
+      const userRoles: AppRole[] = (roleData ?? []).map((r) => r.role as AppRole);
+
+      // setProfile(profile as Profile);
+      // setRoles(userRoles);
+      setProfile(profile);
+      setRoles(userRoles);
+
+      // setActiveRoleState(userRoles[0] ?? "lead_executive");
+      const primaryRole: AppRole = userRoles.length > 0 ? userRoles[0]! : "lead_executive";
+
+      setActiveRoleState(primaryRole);
+      // if (cancelled || error || !p) return;
+
+      // setProfile(p as Profile);
+      // setRoles([p.role as AppRole]);
+      // setActiveRoleState(p.role as AppRole);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [session?.user.id]);
 
   const setActiveRole = useCallback((r: AppRole) => {
@@ -91,11 +180,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") localStorage.setItem("leadhub.activeRole", r);
   }, []);
 
-  const value = useMemo<AuthValue>(() => ({
-    loading, session, user: session?.user ?? null, profile, roles, activeRole, setActiveRole,
-    can: (p) => (ROLE_PERMISSIONS[activeRole] ?? []).includes(p),
-    signOut: async () => { await supabase.auth.signOut(); },
-  }), [loading, session, profile, roles, activeRole, setActiveRole]);
+  const value = useMemo<AuthValue>(
+    () => ({
+      loading,
+      session,
+      user: session?.user ?? null,
+      profile,
+      roles,
+      activeRole,
+      setActiveRole,
+      can: (p) => (ROLE_PERMISSIONS[activeRole] ?? []).includes(p),
+      signOut: async () => {
+        await supabase.auth.signOut();
+      },
+    }),
+    [loading, session, profile, roles, activeRole, setActiveRole],
+  );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
